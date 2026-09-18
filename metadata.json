@@ -1,0 +1,8 @@
+{
+  "name": "通用型科研平台",
+  "description": "一个集病原体 NGS 分析、分子免疫学和 AI 驱动的药物发现于一体的综合平台。",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

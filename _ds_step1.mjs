@@ -1,0 +1,28 @@
+const PORT = 9228;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const targets = await (await fetch(`http://127.0.0.1:${PORT}/json/list`)).json();
+const page = targets.find(t => t.type === "page" && t.url.includes("3000"));
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+let id = 0; const pending = new Map(); const events = [];
+ws.addEventListener("message", (ev) => { const m = JSON.parse(ev.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else if (m.method) events.push(m); });
+await new Promise((res) => ws.addEventListener("open", res));
+const send = (method, params = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
+const evalJs = async (expr) => {
+  const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
+  if (r.result?.exceptionDetails) return "EXC: " + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
+  return r.result?.result?.value;
+};
+await send("Runtime.enable");
+await sleep(1800);
+console.log("sidebar 科研中台:", JSON.stringify(await evalJs(`(() => { const t = document.body.innerText; const i = t.indexOf("科研中台"); return t.slice(i, i+70).split("\\n").filter(Boolean); })()`)));
+const center = async (expr) => evalJs(`(() => { const el = ${expr}; if(!el) return null; const r = el.getBoundingClientRect(); return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) }; })()`);
+const realClick = async (pt) => { if (!pt) return "no point"; await send("Input.dispatchMouseEvent", { type: "mousePressed", x: pt.x, y: pt.y, button: "left", clickCount: 1 }); await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: pt.x, y: pt.y, button: "left", clickCount: 1 }); return "clicked"; };
+console.log("open 数据集管理:", await realClick(await center(`Array.from(document.querySelectorAll("button")).find(b => b.innerText.replace(/\\s+/g,"").trim()==="数据集管理")`)));
+await sleep(2500);
+console.log("tabs:", JSON.stringify(await evalJs(`(() => Array.from(document.querySelectorAll("button")).map(b=>b.innerText.replace(/\\s+/g," ").trim()).filter(t=>/^全部数据集|^湿实验表征数据|^组学与测序|^精密仪器原始谱图|^动力学与计算拟合/.test(t)))()`)));
+console.log("table heads:", JSON.stringify(await evalJs(`(() => Array.from(document.querySelectorAll("table thead th")).map(t=>t.innerText.trim()))()`)));
+console.log("row count:", await evalJs(`document.querySelectorAll("table tbody tr").length`));
+console.log("pager text:", await evalJs(`(() => { const t = document.body.innerText.replace(/\\s+/g," "); const i = t.indexOf("共 "); return i>=0 ? t.slice(i, i+46) : "none"; })()`));
+console.log("first row:", await evalJs(`(() => { const tr = document.querySelector("table tbody tr"); return tr ? tr.innerText.replace(/\\s+/g," | ").slice(0,220) : "none"; })()`));
+console.log("exceptions:", events.filter(e => e.method === "Runtime.exceptionThrown").length);
+ws.close(); process.exit(0);
